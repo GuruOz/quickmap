@@ -22,6 +22,6 @@ fi
 directory=$(pwd)
 
 # Run the second nmap command and save the output to a file
-echo "Running nmap -p $ports -sV $1 -o $directory/nmap"
+echo "Running nmap -p $ports -sCV $1 -o $directory/nmap"
 nmap -p $ports -sV $1 -o nmap
 echo "Done. The output is saved in nmap file."
