@@ -1,27 +1,93 @@
 #!/bin/bash
-# This script takes an IP address as an argument and runs two nmap commands on it
-# The first command scans all ports and saves the open ports to a variable
-# The second command scans the open ports and saves the output to a file
+# Quickmap - quick Nmap wrapper
+# Usage:
+#   ./quickmap.sh <target>              # TCP (default)
+#   ./quickmap.sh -udp <target>         # UDP (uses nmap-recommended fast flags)
+#   ./quickmap.sh -u <target>
+#   ./quickmap.sh --udp <target>
 
-# Check if an IP address is provided
-if [ -z "$1" ]; then
-  echo "Please provide an IP address as an argument."
+set -euo pipefail
+
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 [-udp|--udp|-u] <target>"
   exit 1
 fi
 
-# Run the first nmap command and extract the open ports
-echo "Running nmap -p- -T4 -Pn -vvv $1"
-ports=$(nmap -p- -T4 -Pn -vvv $1 -oN nmap | grep "syn-ack" | cut -d "/" -f 1 | tr "\n" "," | sed "s/,$//")
+# parse args (support -udp, --udp, -u)
+MODE="tcp"
+TARGET=""
+while (( "$#" )); do
+  case "$1" in
+    -udp|--udp|-u)
+      MODE="udp"
+      shift
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [-udp|--udp|-u] <target>"
+      exit 1
+      ;;
+    *)
+      TARGET="$1"
+      shift
+      ;;
+  esac
+done
 
-# Check if any ports are found
+if [ -z "$TARGET" ]; then
+  echo "Please provide an IP address or hostname as an argument."
+  exit 1
+fi
+
+echo "Quickmap"
+echo "Target: $TARGET"
+echo "Mode: $MODE"
+
+# Build discovery flags based on mode
+if [ "$MODE" = "udp" ]; then
+  # Use the nmap recommendation you quoted to speed up UDP discovery:
+  # -sUV : combined UDP scan + version probes (speeds service detection for UDP)
+  # -T4  : faster timing
+  # -F   : scan top 100 ports (much faster than -p-)
+  # --version-intensity 0 : minimize version probe intensity (faster)
+  # We still use --open and -oG - to extract open ports reliably
+  DISCOVERY_FLAGS="-sUV -T4 -F --version-intensity 0 -Pn --open -oG -"
+  DETAIL_FLAGS="-sU -sV -sC --version-intensity 0 -T4 -Pn"
+  MODE_TAG="udp"
+else
+  # TCP default: full-port discovery, quicker TCP method (can be adjusted)
+  DISCOVERY_FLAGS="-sT -p- -T4 -Pn --open -oG -"
+  DETAIL_FLAGS="-sV -sC -T4 -Pn"
+  MODE_TAG="tcp"
+fi
+
+echo "Running discovery: nmap $DISCOVERY_FLAGS $TARGET"
+# Run discovery and extract port numbers
+ports=$(
+  # shellcheck disable=SC2086
+  nmap $DISCOVERY_FLAGS "$TARGET" \
+    | awk -F'Ports: ' '/Ports:/{print $2}' \
+    | tr ',' '\n' \
+    | awk -F'/' '{print $1}' \
+    | grep -E '^[0-9]+$' \
+    | tr '\n' ',' \
+    | sed 's/,$//'
+)
+
 if [ -z "$ports" ]; then
-  echo "No open ports found."
+  echo "No open $MODE ports found on $TARGET."
   exit 2
 fi
 
-directory=$(pwd)
+echo "Open ports: $ports"
 
-# Run the second nmap command and save the output to a file
-echo "Running nmap -p $ports -sCV $1 -o $directory/nmap"
-nmap -p $ports -sV $1 -o nmap
-echo "Done. The output is saved in nmap file."
+directory=$(pwd)
+safe_target=$(echo "$TARGET" | tr '/' '_' | tr ':' '_')
+outfile="$directory/nmap_${safe_target}_${MODE_TAG}.txt"
+
+echo "Running detailed scan: nmap $DETAIL_FLAGS -p $ports $TARGET -oN $outfile"
+# shellcheck disable=SC2086
+nmap $DETAIL_FLAGS -p "$ports" "$TARGET" -oN "$outfile"
+
+echo "Done. Output saved to: $outfile"
+
