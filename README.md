@@ -10,7 +10,6 @@ A small Bash wrapper around `nmap` to speed up common reconnaissance workflows.
 - [Installation](#installation)
 - [Usage](#usage)
 - [How it works (short)](#how-it-works-short)
-- [Flags & internals](#flags--internals)
 - [Examples](#examples)
 - [Output files](#output-files)
 - [Troubleshooting](#troubleshooting)
@@ -19,7 +18,7 @@ A small Bash wrapper around `nmap` to speed up common reconnaissance workflows.
 
 ## Features
 - Quick TCP discovery (full-port discovery by default) and focused follow-up scanning.
-- Fast UDP discovery mode using nmap's recommended faster UDP flags (`-sUV -T4 -F --version-intensity 0`).
+- Fast UDP discovery mode.
 - Robust parsing of discovery output to build a port list for the second-pass scan.
 - Clean output filenames including target and scan mode.
 - Simple argument validation and friendly usage messaging.
@@ -73,38 +72,14 @@ quickmap -u example.com
 ## How it works (short)
 1. Parse CLI arguments. Default mode is **tcp**; `-udp` / `-u` / `--udp` switches to UDP mode.  
 2. Run a discovery nmap scan to find **open** ports:
-   - TCP mode: full-port discovery (`-p-`) with grepable output for parsing.
-   - UDP mode: `-sUV -T4 -F --version-intensity 0 -Pn --open -oG -` (fast top-100 UDP discovery).
+   - TCP mode: full-port discovery  with grepable output for parsing.
+   - UDP mode: fast top-100 UDP discovery.
 3. Parse discovery output to extract numeric port IDs.
-4. Run a focused nmap detail scan against discovered ports:
-   - TCP detail: `-sV -sC -T4 -Pn`
-   - UDP detail: `-sU -sV -sC --version-intensity 0 -T4 -Pn`
+4. Run a focused nmap detail scan against discovered ports
 5. Save readable output to `nmap_<target>_<mode>.txt` in the current directory.
 
 ---
 
-## Flags & internals (explanations)
-
-### Discovery flags (TCP)
-- `-sT` : TCP connect scan (works without root).
-- `-p-` : scan all TCP ports (1–65535).
-- `-T4` : faster timing.
-- `-Pn` : skip host discovery (treat host as up).
-- `--open` : show only open ports.
-- `-oG -` : grepable output to stdout for parsing.
-
-### Discovery flags (UDP — fast)
-- `-sUV` : combined UDP + version probes (recommended to speed top-port UDP discovery).
-- `-T4` : faster timing.
-- `-F` : fast scan (top 100 ports) — much faster than `-p-`.
-- `--version-intensity 0` : minimal version probe intensity (faster).
-- `-Pn --open -oG -` : consistent parsing intent as TCP.
-
-### Detail scans
-- TCP: `-sV -sC -T4 -Pn` — service/version detection + default scripts.
-- UDP: `-sU -sV -sC --version-intensity 0 -T4 -Pn` — UDP scan + reduced-intensity version detection.
-
----
 
 ## Examples
 
