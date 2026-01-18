@@ -1,8 +1,8 @@
 #!/bin/bash
 # Quickmap - quick Nmap wrapper
 # Usage:
-#   ./quickmap.sh <target>              # TCP (default)
-#   ./quickmap.sh -udp <target>         # UDP (uses nmap-recommended fast flags)
+#   ./quickmap.sh <target>          # TCP (default)
+#   ./quickmap.sh -udp <target>     # UDP
 #   ./quickmap.sh -u <target>
 #   ./quickmap.sh --udp <target>
 
@@ -13,7 +13,7 @@ if [ "$#" -lt 1 ]; then
   exit 1
 fi
 
-# parse args (support -udp, --udp, -u)
+# parse args
 MODE="tcp"
 TARGET=""
 while (( "$#" )); do
@@ -45,33 +45,28 @@ echo "Mode: $MODE"
 
 # Build discovery flags based on mode
 if [ "$MODE" = "udp" ]; then
-  # Use the nmap recommendation you quoted to speed up UDP discovery:
-  # -sUV : combined UDP scan + version probes (speeds service detection for UDP)
-  # -T4  : faster timing
-  # -F   : scan top 100 ports (much faster than -p-)
-  # --version-intensity 0 : minimize version probe intensity (faster)
-  # We still use --open and -oG - to extract open ports reliably
   DISCOVERY_FLAGS="-sUV -T4 -F --version-intensity 0 -Pn --open -oG -"
   DETAIL_FLAGS="-sU -sV -sC --version-intensity 0 -T4 -Pn"
   MODE_TAG="udp"
 else
-  # TCP default: full-port discovery, quicker TCP method (can be adjusted)
+  # TCP default
   DISCOVERY_FLAGS="-sT -p- -T4 -Pn --open -oG -"
   DETAIL_FLAGS="-sV -sC -T4 -Pn"
   MODE_TAG="tcp"
 fi
 
 echo "Running discovery: nmap $DISCOVERY_FLAGS $TARGET"
-# Run discovery and extract port numbers
+
+# FIXED PORT PARSING
+# 1. Grep the line with Ports
+# 2. Use -oP to extract only the digits followed by /open
+# 3. Use paste to join them with commas
 ports=$(
   # shellcheck disable=SC2086
   nmap $DISCOVERY_FLAGS "$TARGET" \
-    | awk -F'Ports: ' '/Ports:/{print $2}' \
-    | tr ',' '\n' \
-    | awk -F'/' '{print $1}' \
-    | grep -E '^[0-9]+$' \
-    | tr '\n' ',' \
-    | sed 's/,$//'
+    | grep "Ports:" \
+    | grep -oP '\d+(?=/open)' \
+    | paste -sd "," -
 )
 
 if [ -z "$ports" ]; then
@@ -90,4 +85,3 @@ echo "Running detailed scan: nmap $DETAIL_FLAGS -p $ports $TARGET -oN $outfile"
 nmap $DETAIL_FLAGS -p "$ports" "$TARGET" -oN "$outfile"
 
 echo "Done. Output saved to: $outfile"
-
